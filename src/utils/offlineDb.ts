@@ -183,7 +183,7 @@ export async function getAllOfflineDecks(): Promise<Deck[]> {
 
 export async function isDeckSavedOffline(deckId: string): Promise<boolean> {
   const deck = await getOfflineDeck(deckId);
-  return deck !== null && deck.isAvailableOffline === true;
+  return deck !== null;
 }
 
 export async function saveProfileMetaOffline(userId: string, profileMeta: any): Promise<void> {

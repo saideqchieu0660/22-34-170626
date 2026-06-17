@@ -28,7 +28,7 @@ import { CustomCursor } from "./components/CustomCursor";
 import { getLevelInfo, getUnlockedBorders, getCustomTitleTextClass } from "./utils/xp";
 import { GlobalErrorReporter } from "./components/GlobalErrorReporter";
 import { auth, FirebaseListenerManager } from "./lib/firebase";
-import { onAuthStateChanged, signOut, User } from "firebase/auth";
+import { onAuthStateChanged, signOut, User as FirebaseUser } from "firebase/auth";
 import { store } from "./lib/store";
 
 import { Toaster } from "sonner";
@@ -129,7 +129,7 @@ function Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const currentPath = location.pathname;
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<any>(null);
   const [currentUserRank, setCurrentUserRank] = useState<number | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [pulse, setPulse] = useState(false);
@@ -318,7 +318,7 @@ function Layout({ children }: { children: React.ReactNode }) {
     const forceGlobalRender = () => {
        const freshUser = store.getCurrentUser();
        if (freshUser) {
-           setUser(prev => prev ? { ...prev, ...freshUser } : freshUser as User);
+           setUser(prev => prev ? { ...prev, ...freshUser } : freshUser as any);
        }
     };
     window.addEventListener("user-cosmetics-updated", forceGlobalRender);
@@ -419,7 +419,7 @@ function Layout({ children }: { children: React.ReactNode }) {
       await store.setFirebaseUser(auth.currentUser);
       
       // Force a local React state update so App.tsx layout re-renders natively
-      setUser(auth.currentUser ? { ...auth.currentUser } as User : null);
+      setUser(auth.currentUser ? auth.currentUser as any : null);
       
       // Dispatch sự kiện đẻ re-render / đồng bộ ở các màn hình khác
       window.dispatchEvent(new CustomEvent("henosis-data-synced"));
