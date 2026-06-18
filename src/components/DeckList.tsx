@@ -91,18 +91,24 @@ export const DeckList = ({ decks, showSearch = true, groupBySubject = false, onC
   const [downloadingDecks, setDownloadingDecks] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    const refreshOfflineStatus = () => {
+        getAllOfflineDecks().then(offlineDecks => {
+          setOfflineDeckIds(new Set(offlineDecks.filter(d => (d as any).isAvailableOffline).map(d => d.id)));
+        });
+    };
+    
+    const handleOnline = () => { setIsOnline(true); refreshOfflineStatus(); };
+    const handleOffline = () => { setIsOnline(false); refreshOfflineStatus(); };
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('henosis-offline-update', refreshOfflineStatus);
 
-    getAllOfflineDecks().then(offlineDecks => {
-      setOfflineDeckIds(new Set(offlineDecks.filter(d => (d as any).isAvailableOffline).map(d => d.id)));
-    });
+    refreshOfflineStatus();
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('henosis-offline-update', refreshOfflineStatus);
     };
   }, []);
 

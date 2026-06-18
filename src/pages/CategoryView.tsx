@@ -22,15 +22,40 @@ export default function CategoryView() {
     }
 
     const q = query(collection(db, "sets"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const allDecks: Deck[] = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Deck));
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      let allDecks: Deck[] = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Deck));
+      
+      // Merge with offline decks in case Firestore cache is empty while offline
+      try {
+         const { getAllOfflineDecks } = await import('../utils/offlineDb');
+         const offlineDecks = await getAllOfflineDecks();
+         offlineDecks.forEach(offDeck => {
+            if (!allDecks.some(d => d.id === offDeck.id)) {
+               allDecks.push(offDeck);
+            }
+         });
+      } catch (e) {
+         console.warn("Failed to merge offline decks in CategoryView:", e);
+      }
+      
       const targetCategory = decodedCategory.trim().toUpperCase();
       const filtered = allDecks.filter(d => String(d.subject || "Khác").trim().toUpperCase() === targetCategory);
       setDecks(filtered);
       setLoading(false);
-    }, (error) => {
+    }, async (error) => {
       console.error("Error fetching decks snapshot:", error);
-      toast.error("Lỗi khi tải danh mục");
+      // Fallback aggressively to offline DB on error
+      try {
+         const { getAllOfflineDecks } = await import('../utils/offlineDb');
+         const offlineDecks = await getAllOfflineDecks();
+         const targetCategory = decodedCategory.trim().toUpperCase();
+         const filtered = offlineDecks.filter(d => String(d.subject || "Khác").trim().toUpperCase() === targetCategory);
+         setDecks(filtered);
+      } catch (e) {
+         console.warn("Complete failure to load category:", e);
+      }
+      
+      toast.error("Đang dùng dữ liệu ngoại tuyến hoặc lỗi tải danh mục");
       setLoading(false);
     });
 
@@ -53,10 +78,43 @@ export default function CategoryView() {
             Đã tìm thấy <strong className="text-orange-400 font-bold">{decks.length}</strong> bộ học trong danh mục này. Hãy chọn bộ học bạn muốn tham gia.
           </p>
 
-          <button onClick={() => navigate('/dashboard')} className="mt-6 flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-white text-zinc-900 font-bold text-sm tracking-wide hover:bg-orange-500 hover:text-white transition-all shadow-[0_4px_12px_rgba(0,0,0,0.5)]">
-             <Home className="w-5 h-5" />
-             Về Dashboard
-          </button>
+          <div className="flex flex-col sm:flex-row items-center gap-4 mt-6">
+             <button onClick={() => navigate('/dashboard')} className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-white text-zinc-900 font-bold text-sm tracking-wide hover:bg-orange-500 hover:text-white transition-all shadow-[0_4px_12px_rgba(0,0,0,0.5)]">
+                <Home className="w-5 h-5" />
+                Về Dashboard
+             </button>
+             
+             {!loading && decks.length > 0 && navigator.onLine && (
+                <button 
+                  onClick={async () => {
+                     let successCount = 0;
+                     const { downloadCourseForOffline } = await import('../utils/offlineDb');
+                     const loadingToast = toast.loading(`Đang tải xuống ${decks.length} học phần...`);
+                     for (const deck of decks) {
+                        try {
+                           await downloadCourseForOffline(deck.id);
+                           successCount++;
+                        } catch (err) {
+                           console.error(`Failed to download ${deck.id}:`, err);
+                        }
+                     }
+                     toast.dismiss(loadingToast);
+                     if (successCount > 0) {
+                        toast.success(`Đã tải xuống thành công ${successCount}/${decks.length} học phần.`);
+                        // Trigger re-render to update the offline tags in DeckList
+                        setDecks([...decks]); 
+                        window.dispatchEvent(new Event('henosis-offline-update'));
+                     } else {
+                        toast.error("Tải xuống thất bại.");
+                     }
+                  }}
+                  className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-emerald-500 text-white font-bold text-sm tracking-wide hover:bg-emerald-600 transition-all shadow-[0_4px_12px_rgba(0,0,0,0.5)]"
+                >
+                   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                   Tải toàn bộ mục này
+                </button>
+             )}
+          </div>
         </motion.div>
       </div>
 

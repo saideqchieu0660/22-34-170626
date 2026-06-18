@@ -384,8 +384,39 @@ export const store = {
         const { dbService, db, handleFirestoreError, OperationType } = await import('./firebase');
         const { collection, getDocs, setDoc, doc } = await import('firebase/firestore');
 
-        // Lấy profile từ Firestore để đồng bộ role, points, streak, lastActiveDate, streakFreeze
-        const profile = await dbService.getUserProfile(firebaseUser.uid);
+        // Lấy profile từ Firestore
+        let profile = await dbService.getUserProfile(firebaseUser.uid);
+        
+        // CHECK PENDING QUEUE: If the user was offline and made changes, the queue has the freshest data
+        try {
+           const { OfflineSyncQueue } = await import('./offlineSync');
+           const pendingItems = JSON.parse(localStorage.getItem("costudy_offline_sync_queue") || "[]");
+           
+           // Apply latest profile changes (like streakFreeze, etc.)
+           const latestPendingProfile = pendingItems.slice().reverse().find((i: any) => i.type === "userProfile" && i.uid === firebaseUser.uid);
+           if (latestPendingProfile && latestPendingProfile.payload) {
+              console.warn("Hydrating from PENDING QUEUE payload instead of outdated cloud profile to prevent data loss.");
+              profile = { ...profile, ...latestPendingProfile.payload };
+           }
+           
+           // Apply pending points delta (only those that occurred AFTER the latest userProfile payload, if any)
+           let pendingPoints = 0;
+           const latestProfileIndex = pendingItems.slice().reverse().findIndex((i: any) => i.type === "userProfile" && i.uid === firebaseUser.uid);
+           const actualIndex = latestProfileIndex >= 0 ? pendingItems.length - 1 - latestProfileIndex : -1;
+           
+           pendingItems.forEach((i: any, index: number) => {
+               if (index > actualIndex && i.type === "pointsDelta" && i.uid === firebaseUser.uid) {
+                   pendingPoints += (i.payload.delta || 0);
+               }
+           });
+           
+           if (pendingPoints > 0) {
+              profile.points = (profile.points || 0) + pendingPoints;
+           }
+        } catch(e) {
+           console.error("Failed to check offline sync queue during hydration:", e);
+        }
+        
         if (profile) {
             import('../utils/offlineDb').then(({ saveProfileMetaOffline }) => {
                 saveProfileMetaOffline(firebaseUser.uid, profile).catch(console.warn);
@@ -577,29 +608,62 @@ export const store = {
         } catch (setErr) {
             console.error("Failed to load sets from Firestore, fallback to static decks", setErr);
         }
-
-        const states = await dbService.getAllCardStates(firebaseUser.uid);
-        if (states && states.length > 0) {
-            const stateMap = new Map();
-            states.forEach((s: any) => stateMap.set(s.id, s));
-            
-            // Loop through default local decks and update flashcards memory
-            decks.forEach(deck => {
-                deck.cards.forEach(card => {
-                    const savedState = stateMap.get(card.id);
-                    if (savedState) {
-                        card.mastery = typeof savedState.mastery === 'number' && !isNaN(savedState.mastery) ? savedState.mastery : (Number(card.mastery) || 0);
-                        card.nextReviewDate = typeof savedState.nextReviewDate === 'number' ? savedState.nextReviewDate : (typeof savedState.nextReview === 'number' ? savedState.nextReview : card.nextReviewDate);
-                        card.nextReview = card.nextReviewDate || card.nextReview; // Legacy sync
-                        card.interval = typeof savedState.interval === 'number' ? savedState.interval : card.interval;
-                        card.repetitionCount = typeof savedState.repetitionCount === 'number' ? savedState.repetitionCount : (typeof savedState.repetition === 'number' ? savedState.repetition : card.repetitionCount);
-                        card.easeFactor = typeof savedState.easeFactor === 'number' ? savedState.easeFactor : (typeof savedState.efactor === 'number' ? savedState.efactor : card.easeFactor);
-                        card.isNewCard = typeof savedState.isNewCard === 'boolean' ? savedState.isNewCard : false; // If it's saved in state it's no longer new
-                        card.isHard = typeof savedState.isWeakCard !== 'undefined' ? savedState.isWeakCard : card.isHard;
+        
+        try {
+            const { getAllOfflineDecks } = await import('../utils/offlineDb');
+            const offlineCourses = await getAllOfflineDecks();
+            if (offlineCourses.length > 0) {
+                // Merge without duplicating
+                offlineCourses.forEach((offDeck: any) => {
+                    const exists = decks.findIndex(d => d.id === offDeck.id);
+                    if (exists !== -1) {
+                        decks[exists] = offDeck; // Override with offline version (it has isAvailableOffline flag)
+                    } else {
+                        decks.push(offDeck as Deck);
                     }
                 });
-            });
+            }
+        } catch (offlineReadErr) {
+            console.warn("Failed to read offline courses during hydration:", offlineReadErr);
         }
+
+        let states: any[] = [];
+        try {
+            states = await dbService.getAllCardStates(firebaseUser.uid) || [];
+        } catch(e: any) {
+            console.warn("Failed to fetch cloud card states, relying on pending offline sync items:", e);
+        }
+
+        const stateMap = new Map();
+        states.forEach((s: any) => stateMap.set(s.id, s));
+        
+        try {
+           const pendingItems = JSON.parse(localStorage.getItem("costudy_offline_sync_queue") || "[]");
+           pendingItems.forEach((i: any) => {
+              if (i.type === "cardState" && i.uid === firebaseUser.uid && i.cardId) {
+                 stateMap.set(i.cardId, { ...stateMap.get(i.cardId), ...i.payload });
+              }
+           });
+        } catch(e) {
+           console.error("Failed to merge offline card states:", e);
+        }
+        
+        // Loop through default local decks and update flashcards memory
+        decks.forEach(deck => {
+            deck.cards.forEach(card => {
+                const savedState = stateMap.get(card.id);
+                if (savedState) {
+                    card.mastery = typeof savedState.mastery === 'number' && !isNaN(savedState.mastery) ? savedState.mastery : (Number(card.mastery) || 0);
+                    card.nextReviewDate = typeof savedState.nextReviewDate === 'number' ? savedState.nextReviewDate : (typeof savedState.nextReview === 'number' ? savedState.nextReview : card.nextReviewDate);
+                    card.nextReview = card.nextReviewDate || card.nextReview; // Legacy sync
+                    card.interval = typeof savedState.interval === 'number' ? savedState.interval : card.interval;
+                    card.repetitionCount = typeof savedState.repetitionCount === 'number' ? savedState.repetitionCount : (typeof savedState.repetition === 'number' ? savedState.repetition : card.repetitionCount);
+                    card.easeFactor = typeof savedState.easeFactor === 'number' ? savedState.easeFactor : (typeof savedState.efactor === 'number' ? savedState.efactor : card.easeFactor);
+                    card.isNewCard = typeof savedState.isNewCard === 'boolean' ? savedState.isNewCard : false; // If it's saved in state it's no longer new
+                    card.isHard = typeof savedState.isWeakCard !== 'undefined' ? savedState.isWeakCard : card.isHard;
+                }
+            });
+        });
     } catch (e: any) {
         if (!navigator.onLine || e?.message?.includes('client is offline') || e?.message?.includes('Failed to load sets from Firestore')) {
             console.warn("Firebase client is offline: loading offline courses from IndexedDB.");

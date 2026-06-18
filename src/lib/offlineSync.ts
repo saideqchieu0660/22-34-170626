@@ -190,9 +190,9 @@ export const OfflineSyncQueue = {
                 const localRole = payload.role || "student";
                 const cloudDominantRole = (cloudRole === "Admin" || cloudRole === "admin" || cloudRole === "teacher") && (localRole === "student");
                 
-                // If cloud data is superior (timestamp/points/roles are better), ABORT upload
-                if (cloudPoints > localPoints || cloudDominantRole) {
-                   console.error(`[OfflineSync] CRITICAL OVERWRITE AVERTED! Cloud profile has higher points (${cloudPoints} > ${localPoints}) or dominant role. Forcing downstream overwrite.`);
+                // If cloud data is logically dominant in roles, ABORT upload
+                if (cloudDominantRole) {
+                   console.error(`[OfflineSync] CRITICAL OVERWRITE AVERTED! Cloud profile has dominant role. Forcing downstream overwrite.`);
                    
                    // Drop the corrupted local queue item to prevent overwrite loop
                    const nextQueue = getQueue().filter(i => i.id !== item.id);
