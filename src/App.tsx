@@ -13,14 +13,14 @@ import { syncAIPrompts } from "./utils/apiClient";
 import StudentDashboard from "./pages/StudentDashboard";
 import AuthScreen from "./components/AuthScreen";
 
-const TeacherDashboard = lazy(() => import("./pages/TeacherDashboard"));
-const StudyRoom = lazy(() => import("./pages/StudyRoom"));
-const CoStudyRoom = lazy(() => import("./pages/CoStudyRoom"));
-const SetupProfileScreen = lazy(() => import("./pages/SetupProfileScreen"));
-const AdminKeysDashboard = lazy(() => import("./pages/AdminKeysDashboard"));
-const AdminCreateCards = lazy(() => import("./pages/AdminCreateCards"));
-const VerifyEmailScreen = lazy(() => import("./components/VerifyEmailScreen"));
-const CategoryView = lazy(() => import("./pages/CategoryView"));
+import TeacherDashboard from "./pages/TeacherDashboard";
+import StudyRoom from "./pages/StudyRoom";
+import CoStudyRoom from "./pages/CoStudyRoom";
+import SetupProfileScreen from "./pages/SetupProfileScreen";
+import AdminKeysDashboard from "./pages/AdminKeysDashboard";
+import AdminCreateCards from "./pages/AdminCreateCards";
+import VerifyEmailScreen from "./components/VerifyEmailScreen";
+import CategoryView from "./pages/CategoryView";
 
 import { GlobalErrorToast } from "./components/GlobalErrorToast";
 import { AudioVisualizer } from "./components/AudioVisualizer";

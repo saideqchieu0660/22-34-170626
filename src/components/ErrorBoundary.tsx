@@ -36,6 +36,11 @@ export class ErrorBoundary extends Component<Props, State> {
       errorMessage.includes("error loading dynamically imported module");
 
     if (isChunkError) {
+      if (!navigator.onLine) {
+        console.warn("[System] Chunk load failed but user is offline. Keeping cache intact.");
+        return;
+      }
+      
       const now = Date.now();
       const lastReloadStr = sessionStorage.getItem("chunk_load_failed_reload_time");
       const lastReload = lastReloadStr ? parseInt(lastReloadStr, 10) : 0;

@@ -1,5 +1,5 @@
-const CACHE_NAME = 'henosis-root-v7';
-const DYNAMIC_CACHE = 'henosis-dynamic-v7';
+const CACHE_NAME = 'henosis-root-v9';
+const DYNAMIC_CACHE = 'henosis-dynamic-v9';
 
 // 1. ASSET CACHING: Baseline assets ONLY. No dynamic Vite hashes here to prevent install aborts.
 const STATIC_ASSETS = [
@@ -118,6 +118,8 @@ self.addEventListener('fetch', (event) => {
             }
             try {
               const cache = await caches.open(CACHE_NAME);
+              // Cache against both / and /index.html to ensure it survives SW version bumps
+              await cache.put('/', networkResponse.clone());
               await cache.put('/index.html', networkResponse.clone());
             } catch (cacheErr) {
               console.warn('[SW] Cache put failed (Quota/Storage issue?):', cacheErr);
@@ -126,8 +128,22 @@ self.addEventListener('fetch', (event) => {
           } catch (error) {
             console.warn('[SW] Offline mode detected. SPA fallback triggered for:', url.pathname);
             try {
-              const cache = await caches.open(CACHE_NAME);
-              const cachedResponse = await cache.match('/index.html') || await cache.match('/');
+              let cachedResponse = await caches.match(event.request, { ignoreSearch: true })
+                                || await caches.match('/', { ignoreSearch: true })
+                                || await caches.match('/index.html', { ignoreSearch: true });
+              
+              if (!cachedResponse) {
+                // Brute-force fallback: find ANY html document in the cache
+                const cache = await caches.open(CACHE_NAME);
+                const keys = await cache.keys();
+                for (const req of keys) {
+                  if (req.url.endsWith('/') || req.url.endsWith('.html')) {
+                    cachedResponse = await cache.match(req);
+                    if (cachedResponse) break;
+                  }
+                }
+              }
+
               if (cachedResponse) return cachedResponse;
             } catch (cacheErr) {
               console.warn('[SW] Cache match failed during offline fallback:', cacheErr);
