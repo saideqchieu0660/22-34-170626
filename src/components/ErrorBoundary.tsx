@@ -44,7 +44,18 @@ export class ErrorBoundary extends Component<Props, State> {
       if (now - lastReload > 15000) {
         sessionStorage.setItem("chunk_load_failed_reload_time", now.toString());
         console.warn("[System] Detected application update. Loading raw assets...");
-        window.location.reload();
+        
+        const purgePromises = [];
+        if ('serviceWorker' in navigator) {
+          purgePromises.push(navigator.serviceWorker.getRegistrations().then(regs => Promise.all(regs.map(r => r.unregister()))));
+        }
+        if ('caches' in window) {
+          purgePromises.push(caches.keys().then(names => Promise.all(names.map(name => caches.delete(name)))));
+        }
+        
+        Promise.all(purgePromises).catch(() => {}).finally(() => {
+          window.location.reload();
+        });
       }
     }
   }
@@ -133,8 +144,16 @@ URL: ${window.location.href}`;
             
             <div className="flex flex-col sm:flex-row gap-3">
                <button
-                  onClick={() => {
+                  onClick={async () => {
                     if (isChunkError) {
+                      const purgePromises = [];
+                      if ('serviceWorker' in navigator) {
+                        purgePromises.push(navigator.serviceWorker.getRegistrations().then(regs => Promise.all(regs.map(r => r.unregister()))));
+                      }
+                      if ('caches' in window) {
+                        purgePromises.push(caches.keys().then(names => Promise.all(names.map(name => caches.delete(name)))));
+                      }
+                      await Promise.all(purgePromises).catch(() => {});
                       window.location.reload();
                     } else {
                       this.setState({ hasError: false, error: undefined, errorInfo: undefined });

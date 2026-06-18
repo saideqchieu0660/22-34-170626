@@ -65,7 +65,18 @@ const handleChunkError = (message: string) => {
     if (!lastReloadTime || now - parseInt(lastReloadTime, 10) > 10000) {
       sessionStorage.setItem("chunk_reload_time", now.toString());
       console.warn("Chunk load error detected, triggering hard reload to fetch new assets...");
-      window.location.reload();
+      
+      const purgePromises = [];
+      if ('serviceWorker' in navigator) {
+        purgePromises.push(navigator.serviceWorker.getRegistrations().then(regs => Promise.all(regs.map(r => r.unregister()))));
+      }
+      if ('caches' in window) {
+        purgePromises.push(caches.keys().then(names => Promise.all(names.map(name => caches.delete(name)))));
+      }
+      
+      Promise.all(purgePromises).catch(() => {}).finally(() => {
+        window.location.reload();
+      });
     }
   }
 };

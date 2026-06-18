@@ -1,5 +1,5 @@
-const CACHE_NAME = 'henosis-root-v5';
-const DYNAMIC_CACHE = 'henosis-dynamic-v5';
+const CACHE_NAME = 'henosis-root-v6';
+const DYNAMIC_CACHE = 'henosis-dynamic-v6';
 
 // 1. ASSET CACHING: Baseline assets ONLY. No dynamic Vite hashes here to prevent install aborts.
 const STATIC_ASSETS = [
