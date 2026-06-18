@@ -1777,7 +1777,7 @@ export default function StudentDashboard() {
         </div>
       )}
 
-      <AnimatePresence mode="wait">
+      <AnimatePresence>
       {activeTab !== "quiz" && (
       <motion.section 
         key="header-stats"
@@ -1877,7 +1877,7 @@ export default function StudentDashboard() {
       )}
       </AnimatePresence>
 
-      <AnimatePresence mode="wait">
+      <AnimatePresence>
       {activeTab === "achievements" && (
         <motion.div 
             key="achievements-tab"

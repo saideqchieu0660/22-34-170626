@@ -10,14 +10,15 @@ import { StreakDisplay } from "./components/StreakDisplay";
 import { Breadcrumbs } from "./components/Breadcrumbs";
 import { syncAIPrompts } from "./utils/apiClient";
 
-const StudentDashboard = lazy(() => import("./pages/StudentDashboard"));
+import StudentDashboard from "./pages/StudentDashboard";
+import AuthScreen from "./components/AuthScreen";
+
 const TeacherDashboard = lazy(() => import("./pages/TeacherDashboard"));
 const StudyRoom = lazy(() => import("./pages/StudyRoom"));
 const CoStudyRoom = lazy(() => import("./pages/CoStudyRoom"));
 const SetupProfileScreen = lazy(() => import("./pages/SetupProfileScreen"));
 const AdminKeysDashboard = lazy(() => import("./pages/AdminKeysDashboard"));
 const AdminCreateCards = lazy(() => import("./pages/AdminCreateCards"));
-const AuthScreen = lazy(() => import("./components/AuthScreen"));
 const VerifyEmailScreen = lazy(() => import("./components/VerifyEmailScreen"));
 const CategoryView = lazy(() => import("./pages/CategoryView"));
 
