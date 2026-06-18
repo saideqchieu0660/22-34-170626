@@ -1528,11 +1528,11 @@ function Layout({ children }: { children: React.ReactNode }) {
                      </div>
 
                      <div className="space-y-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
-                        {user?.isAnonymous ? (
+                        {!user || user?.isAnonymous ? (
                          <button 
                             onClick={async () => {
                                setShowSettingsModal(false);
-                               setShowLogoutConfirm(true);
+                               navigate('/auth');
                             }}
                             className="w-full flex items-center justify-between p-4 rounded-xl border border-orange-500/20 bg-orange-500/5 hover:bg-orange-500/10 text-orange-500 transition group cursor-pointer"
                          >

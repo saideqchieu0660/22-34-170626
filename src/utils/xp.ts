@@ -15,25 +15,31 @@ export const ALL_TITLES = [
   { id: "Thần Thoại Kỷ Nguyên Mới", isCustom: true, desc: "Sự hiện diện của ngài tạo nên lịch sử mới. Hào quang kim cương tối thượng." },
 ];
 
-export const getUnlockedTitles = (level: number, currentTitle?: string, unlockedCustomTitles: string[] = []) => {
+export const getUnlockedTitles = (level: number, currentTitle?: string, unlockedCustomTitles: string[] | any = []) => {
   const titles = ALL_TITLES.filter(t => !t.isCustom && level >= t.levelReq).map(t => t.id);
   if (currentTitle && ALL_TITLES.find(t => t.isCustom && t.id === currentTitle)) {
     if (!titles.includes(currentTitle)) titles.push(currentTitle);
   }
-  unlockedCustomTitles.forEach(t => {
-    if (!titles.includes(t)) titles.push(t);
+  const safeTitles = Array.isArray(unlockedCustomTitles) ? unlockedCustomTitles : [];
+  safeTitles.forEach(t => {
+    if (typeof t === 'string' && !titles.includes(t)) titles.push(t);
   });
   return titles;
 };
 
-export const getLevelInfo = (xp: number) => {
+export const getLevelInfo = (rawXp: number) => {
+  const xp = isNaN(Number(rawXp)) || !isFinite(Number(rawXp)) ? 0 : Number(rawXp);
   const currentLevel = Math.max(1, Math.floor(Math.sqrt(Math.max(0, xp) / 50)) + 1);
   const currentLevelXp = Math.pow(currentLevel - 1, 2) * 50;
   const nextLevelXp = Math.pow(currentLevel, 2) * 50;
   
-  const xpIntoCurrentLevel = xp - currentLevelXp;
-  const xpNeededForNextLevel = nextLevelXp - currentLevelXp;
-  const progressPercentage = Math.min(100, Math.max(0, (xpIntoCurrentLevel / xpNeededForNextLevel) * 100));
+  const xpIntoCurrentLevel = Math.max(0, xp - currentLevelXp);
+  const xpNeededForNextLevel = Math.max(1, nextLevelXp - currentLevelXp);
+  let progressPercentage = Math.min(100, Math.max(0, (xpIntoCurrentLevel / xpNeededForNextLevel) * 100));
+  
+  if (isNaN(progressPercentage) || !isFinite(progressPercentage)) {
+    progressPercentage = 0;
+  }
 
   let title = "Công Dân Athens";
   if (currentLevel >= 3) title = "Học Giả Thư Viện";

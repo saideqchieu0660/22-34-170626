@@ -1887,13 +1887,15 @@ export default function StudentDashboard() {
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.3 }}
          >
-             <StudentBadges 
-                points={user?.points || 0} 
-                streak={user?.streak || 0} 
-                top1Weeks={Math.max(user?.top1Weeks || 0, (sortedUsers.length > 0 && sortedUsers[0].id === user?.id && (user?.points || 0) > 0) ? 1 : 0)}
-                studyMinutesThisWeek={(studyHours * 60) + studyMinutes}
-                averageMastery={user?.averageMastery || 0}
-             />
+             <ErrorBoundary fallback={<div className="p-8 bg-red-100/50 rounded-lg text-center dark:bg-red-900/10">Tính năng Huy hiệu đang bảo trì hoặc chưa sẵn sàng. Vui lòng thử lại sau.</div>}>
+                <StudentBadges 
+                   points={user?.points || 0} 
+                   streak={user?.streak || 0} 
+                   top1Weeks={Math.max(user?.top1Weeks || 0, (sortedUsers.length > 0 && sortedUsers[0].id === user?.id && (user?.points || 0) > 0) ? 1 : 0)}
+                   studyMinutesThisWeek={isNaN((studyHours * 60) + studyMinutes) ? 0 : (studyHours * 60) + studyMinutes}
+                   averageMastery={user?.averageMastery || 0}
+                />
+             </ErrorBoundary>
          </motion.div>
        )}
 
@@ -2564,7 +2566,7 @@ export default function StudentDashboard() {
                          stroke="#3b82f6" 
                          strokeWidth="8" 
                          strokeDasharray={251.2} 
-                         strokeDashoffset={251.2 - (Math.min(dailyReviewed / dailyGoal, 1) * 251.2)} 
+                         strokeDashoffset={251.2 - (isNaN(dailyReviewed) || isNaN(dailyGoal) || dailyGoal <= 0 ? 0 : Math.min(dailyReviewed / dailyGoal, 1) * 251.2)} 
                          strokeLinecap="round" 
                          className="transition-all duration-1000 ease-out"
                        />
@@ -2622,12 +2624,14 @@ export default function StudentDashboard() {
               </div>
             </section>
 
-            <TopPerformersWidget 
-              users={sortedUsers.slice(0, 10)} 
-              currentUserId={user?.id} 
-              rankTrends={rankTrends} 
-              onUserClick={setSelectedUserProfile} 
-            />
+            <ErrorBoundary fallback={<div className="glass p-6 rounded-2xl text-center bg-red-100/50 dark:bg-red-900/10"><p className="text-sm font-bold opacity-60">Bảng xếp hạng đang bảo trì.</p></div>}>
+              <TopPerformersWidget 
+                users={sortedUsers.slice(0, 10)} 
+                currentUserId={user?.id} 
+                rankTrends={rankTrends} 
+                onUserClick={setSelectedUserProfile} 
+              />
+            </ErrorBoundary>
             
             <GlobalActivityFeed />
           </aside>
@@ -4369,10 +4373,11 @@ export default function StudentDashboard() {
           transition={{ duration: 0.3 }}
           className="glass p-4 sm:p-8 rounded-2xl relative overflow-hidden max-w-4xl mx-auto"
         >
-          <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 left-0 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl" />
-          
-          <div className="relative z-10">
+          <ErrorBoundary fallback={<div className="p-8 bg-red-100/50 rounded-lg text-center dark:bg-red-900/10">Trang hồ sơ cá nhân hiện tại không khả dụng.</div>}>
+            <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl" />
+            <div className="absolute bottom-0 left-0 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl" />
+            
+            <div className="relative z-10">
             <div className="flex items-center justify-between gap-3 border-b border-orange-600/20 dark:border-orange-500/30 pb-4 mb-8">
               <h3 className="font-serif italic font-medium text-3xl font-display text-transparent bg-clip-text bg-gradient-to-r from-orange-700 via-orange-500 to-orange-600 dark:from-orange-200 dark:via-orange-400 dark:to-orange-500 flex items-center gap-3">
                  Cá Nhân Hóa Hồ Sơ
@@ -4387,24 +4392,33 @@ export default function StudentDashboard() {
             </div>
             
             {user && (() => {
-              const xpInfo = getLevelInfo(user.points || 0);
-              const userLevel = user.level || xpInfo.currentLevel;
-              const equippedTitle = user.title || xpInfo.title;
-              const equippedBorder = user.avatarBorder || "none";
+              const displayXP = Number(user?.points || (user as any)?.xp) || 0;
+              const xpInfo = getLevelInfo(displayXP);
+              const userLevel = Number(user?.level) || xpInfo.currentLevel;
+              const equippedTitle = user?.title || xpInfo.title;
+              const equippedBorder = user?.avatarBorder || "none";
               
+              const storedStreak = Number(user?.streak) || 0;
+              const storedMastery = Number(user?.averageMastery) || 0;
+              const totalPoints = displayXP;
+              const top1WeeksObj = Number(user?.top1Weeks) || 0;
+              
+              const safeCustomBorders = Array.isArray(user?.unlockedCustomBorders) ? user.unlockedCustomBorders : [];
+              const safeCustomTitles = Array.isArray(user?.unlockedCustomTitles) ? user.unlockedCustomTitles : [];
+
               const BORDERS = getUnlockedBorders(
-                user.points || 0,
-                user.streak || 0,
-                0, // top1Weeks (not tracked in local user mostly)
+                totalPoints,
+                storedStreak,
+                top1WeeksObj, // top1Weeks (not tracked in local user mostly)
                 0, // studyTime
-                0, // mastery
-                user.avatarBorder || "none",
-                user.unlockedCustomBorders || []
+                storedMastery, // mastery
+                equippedBorder,
+                safeCustomBorders
               );
               
-              const AVAILABLE_BORDERS = BORDERS;
+              const AVAILABLE_BORDERS = BORDERS || [];
               
-              const unlockedTitles = getUnlockedTitles(xpInfo.currentLevel, user.title, user.unlockedCustomTitles || []);
+              const unlockedTitles = getUnlockedTitles(userLevel, equippedTitle, safeCustomTitles);
 
               const updateProfileField = async (field: "title" | "avatarBorder", value: string) => {
                 try {
@@ -4541,20 +4555,20 @@ export default function StudentDashboard() {
                        
                        <div className="pt-2">
                          <div className="flex justify-between text-xs font-mono mb-1.5 opacity-80">
-                            <span>{Math.floor(xpInfo.xpIntoCurrentLevel)} XP</span>
-                            <span>{Math.floor(xpInfo.xpNeededForNextLevel)} XP đến Lv.{userLevel + 1}</span>
+                            <span>{Math.floor(Number(xpInfo.xpIntoCurrentLevel) || 0)} XP</span>
+                            <span>{Math.floor(Number(xpInfo.xpNeededForNextLevel) || 100)} XP đến Lv.{userLevel + 1}</span>
                          </div>
                          <div className="h-3 w-full bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden shadow-inner">
                             <motion.div 
                               initial={{ width: 0 }}
-                              animate={{ width: `${xpInfo.progressPercentage}%` }}
+                              animate={{ width: `${isNaN(xpInfo.progressPercentage) || !isFinite(xpInfo.progressPercentage) ? 0 : Math.min(Math.max(0, xpInfo.progressPercentage), 100)}%` }}
                               transition={{ duration: 1, ease: "easeOut" }}
                               className="h-full bg-gradient-to-r from-orange-400 to-orange-500 dark:from-orange-600 dark:to-orange-500 rounded-full relative"
                             >
                                <div className="absolute inset-0 bg-white/20 w-full h-full animate-[shimmer_2s_infinite]" style={{ backgroundImage: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)', backgroundSize: '200% 100%' }} />
                             </motion.div>
                          </div>
-                         <p className="font-sans font-light tracking-wide text-[10px] mt-2 opacity-50 text-right">Tổng XP: {user.points || 0}</p>
+                         <p className="font-sans font-light tracking-wide text-[10px] mt-2 opacity-50 text-right">Tổng XP: {displayXP}</p>
                        </div>
                        
                        <div className="flex flex-wrap gap-4 items-center justify-center md:justify-start">
@@ -4769,6 +4783,7 @@ export default function StudentDashboard() {
               );
             })()}
           </div>
+          </ErrorBoundary>
         </motion.div>
       )}
 
@@ -4781,6 +4796,7 @@ export default function StudentDashboard() {
           transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
           className="space-y-12 max-w-6xl mx-auto py-4"
         >
+          <ErrorBoundary fallback={<div className="p-8 bg-black/90 text-orange-500 font-mono text-center border border-orange-500/30 rounded-xl">SYSTEM_FAILURE // RETRY_LATER</div>}>
           {/* Hero Header Sector */}
           <div className="relative p-8 md:p-12 rounded-3xl bg-black/90 dark:bg-black text-white border-[0.5px] border-orange-500/30 overflow-hidden scanline">
             <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/5 rounded-full blur-3xl pointer-events-none" />
@@ -4897,6 +4913,7 @@ export default function StudentDashboard() {
               </div>
             </div>
           </div>
+          </ErrorBoundary>
         </motion.div>
       )}
 
@@ -5367,7 +5384,7 @@ export default function StudentDashboard() {
                   
                   <div className="space-y-4 max-h-[460px] overflow-y-auto pr-2">
                      {user && store.getReviewHistory(user.id).length > 0 ? (
-                       store.getReviewHistory(user.id).map((record) => (
+                       (store.getReviewHistory(user.id) || []).map((record) => (
                          <motion.div 
                            key={record.id}
                            initial={{ opacity: 0, x: -20 }}

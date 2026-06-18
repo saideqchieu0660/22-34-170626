@@ -8,7 +8,10 @@ import {
   updateProfile,
   sendEmailVerification,
   signOut,
-  signInAnonymously
+  signInAnonymously,
+  EmailAuthProvider,
+  linkWithCredential,
+  linkWithPopup
 } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { Mail, Lock, Key, User, Loader2, AlertCircle, ArrowRight, Eye, EyeOff } from 'lucide-react';
@@ -99,7 +102,23 @@ export default function AuthScreen() {
           navigate(isTeacher && !isExplicitlyStudentMode ? '/teacher' : '/dashboard');
         }
       } else {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        let userCredential;
+        const currentUser = auth.currentUser;
+        
+        if (currentUser && currentUser.isAnonymous) {
+           const credential = EmailAuthProvider.credential(email, password);
+           try {
+              userCredential = await linkWithCredential(currentUser, credential);
+           } catch (e: any) {
+              if (e.code === 'auth/credential-already-in-use' || e.code === 'auth/email-already-in-use') {
+                 throw e; // Handled in catch block
+              }
+              userCredential = await createUserWithEmailAndPassword(auth, email, password);
+           }
+        } else {
+           userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        }
+
         if (userCredential.user) {
           await updateProfile(userCredential.user, { displayName: username.trim() });
           
@@ -162,7 +181,22 @@ export default function AuthScreen() {
     try {
       const { setPersistence, browserLocalPersistence } = await import("firebase/auth");
       await setPersistence(auth, browserLocalPersistence);
-      const userCredential = await signInWithPopup(auth, provider);
+      let userCredential;
+      const authCurrentUser = auth.currentUser;
+      
+      if (authCurrentUser && authCurrentUser.isAnonymous) {
+         try {
+             userCredential = await linkWithPopup(authCurrentUser, provider);
+         } catch (e: any) {
+             if (e.code === 'auth/credential-already-in-use' || e.code === 'auth/email-already-in-use') {
+                 userCredential = await signInWithPopup(auth, provider);
+             } else {
+                 throw e;
+             }
+         }
+      } else {
+         userCredential = await signInWithPopup(auth, provider);
+      }
       
       const { dbService } = await import('../lib/firebase');
       const profile = await dbService.getUserProfile(userCredential.user.uid);

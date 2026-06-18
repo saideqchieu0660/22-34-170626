@@ -9,36 +9,63 @@ const STATIC_ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      console.log('[SW] Caching baseline App Shell...');
-      return Promise.allSettled(
-        STATIC_ASSETS.map(asset => 
-          fetch(asset).then(res => {
-            if (res.ok) cache.put(asset, res);
-          })
-        )
-      );
-    }).catch(err => console.error("[SW] Cache baseline install error:", err))
-  );
+  try {
+    self.skipWaiting();
+    event.waitUntil(
+      (async () => {
+        try {
+          const cache = await caches.open(CACHE_NAME);
+          console.log('[SW] Caching baseline App Shell...');
+          await Promise.allSettled(
+            STATIC_ASSETS.map(asset => 
+              fetch(asset).then(async res => {
+                if (res.ok) {
+                  try {
+                    await cache.put(asset, res);
+                  } catch (e) {
+                    console.warn('[SW] Cache put failed (Quota Exceeded?):', e);
+                  }
+                }
+              }).catch(e => console.warn(`[SW] Fetch failed for ${asset}:`, e))
+            )
+          );
+        } catch (err) {
+          console.error("[SW] Cache baseline install error:", err);
+        }
+      })()
+    );
+  } catch (error) {
+    console.error("[SW] Fatal install error caught:", error);
+  }
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    self.clients.claim().then(() => {
-      return caches.keys().then((cacheNames) => {
-        return Promise.all(
-          cacheNames.map((cacheName) => {
-            if (cacheName !== CACHE_NAME && cacheName !== DYNAMIC_CACHE) {
-              console.log('[SW] Deleting old offline cache version:', cacheName);
-              return caches.delete(cacheName);
-            }
-          })
-        );
-      });
-    })
-  );
+  try {
+    event.waitUntil(
+      (async () => {
+        try {
+          await self.clients.claim();
+          const cacheNames = await caches.keys();
+          await Promise.allSettled(
+            cacheNames.map(async (cacheName) => {
+              if (cacheName !== CACHE_NAME && cacheName !== DYNAMIC_CACHE) {
+                console.log('[SW] Deleting old offline cache version:', cacheName);
+                try {
+                  await caches.delete(cacheName);
+                } catch (e) {
+                  console.warn('[SW] Failed to delete old cache:', e);
+                }
+              }
+            })
+          );
+        } catch (err) {
+          console.error("[SW] Activate caching error:", err);
+        }
+      })()
+    );
+  } catch (error) {
+    console.error("[SW] Fatal activate error caught:", error);
+  }
 });
 
 // Listener for dynamic frontend registration script (proactive cache of runtime chunks)
@@ -65,69 +92,98 @@ self.addEventListener('message', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
+  try {
+    const url = new URL(event.request.url);
 
-  // Bypass API requests, external Google identity services, and Firebase endpoints
-  if (
-    url.pathname.startsWith('/api/') || 
-    url.hostname.includes('googleapis.com') ||
-    url.hostname.includes('firebase') ||
-    url.hostname.includes('identity') ||
-    url.protocol === 'chrome-extension:' ||
-    event.request.method !== 'GET'
-  ) {
-    return;
-  }
+    // Bypass API requests, external Google identity services, and Firebase endpoints
+    if (
+      url.pathname.startsWith('/api/') || 
+      url.hostname.includes('googleapis.com') ||
+      url.hostname.includes('firebase') ||
+      url.hostname.includes('identity') ||
+      url.protocol === 'chrome-extension:' ||
+      event.request.method !== 'GET'
+    ) {
+      return;
+    }
 
-  // 2. RESILIENT OFFLINE NAVIGATIONAL CACHING (Network-First Fallback-to-Index)
-  if (event.request.mode === 'navigate') {
+    // 2. RESILIENT OFFLINE NAVIGATIONAL CACHING (Network-First Fallback-to-Index)
+    if (event.request.mode === 'navigate') {
+      event.respondWith(
+        (async () => {
+          try {
+            const networkResponse = await fetch(event.request);
+            if (!networkResponse || (!networkResponse.ok && networkResponse.type !== 'opaque')) {
+              throw new Error(`Server returned non-OK status: ${networkResponse?.status}`);
+            }
+            try {
+              const cache = await caches.open(CACHE_NAME);
+              await cache.put('/index.html', networkResponse.clone());
+            } catch (cacheErr) {
+              console.warn('[SW] Cache put failed (Quota/Storage issue?):', cacheErr);
+            }
+            return networkResponse;
+          } catch (error) {
+            console.warn('[SW] Offline mode detected. SPA fallback triggered for:', url.pathname);
+            try {
+              const cache = await caches.open(CACHE_NAME);
+              const cachedResponse = await cache.match('/index.html') || await cache.match('/');
+              if (cachedResponse) return cachedResponse;
+            } catch (cacheErr) {
+              console.warn('[SW] Cache match failed during offline fallback:', cacheErr);
+            }
+            
+            return new Response('Offline App Shell missing. Please connect to the internet to load the app.', { 
+              status: 503, 
+              statusText: 'Service Unavailable', 
+              headers: { 'Content-Type': 'text/plain' }
+            });
+          }
+        })().catch(e => {
+            console.error("[SW] Fatal navigate fetch error:", e);
+            return fetch(event.request);
+        })
+      );
+      return; 
+    }
+
+    // 3. DYNAMIC ASSETS (Stale-While-Revalidate)
     event.respondWith(
       (async () => {
+        let cachedResponse;
+        let cache;
         try {
-          const networkResponse = await fetch(event.request);
-          if (!networkResponse || (!networkResponse.ok && networkResponse.type !== 'opaque')) {
-            throw new Error(`Server returned non-OK status: ${networkResponse?.status}`);
+          cache = await caches.open(DYNAMIC_CACHE);
+          cachedResponse = await cache.match(event.request);
+        } catch (e) {
+          console.warn("[SW] Dynamic cache match failed:", e);
+        }
+
+        const fetchPromise = fetch(event.request).then(async (networkResponse) => {
+          if (networkResponse && networkResponse.status === 200 && (networkResponse.type === 'basic' || networkResponse.type === 'cors')) {
+            try {
+               const cacheToPut = cache || await caches.open(DYNAMIC_CACHE);
+               await cacheToPut.put(event.request, networkResponse.clone());
+            } catch (cachePutErr) {
+               console.warn('[SW] Dynamic Cache put failed:', cachePutErr);
+            }
           }
-          const cache = await caches.open(CACHE_NAME);
-          cache.put('/index.html', networkResponse.clone());
           return networkResponse;
-        } catch (error) {
-          console.warn('[SW] Offline mode detected. SPA fallback triggered for:', url.pathname);
-          const cache = await caches.open(CACHE_NAME);
-          const cachedResponse = await cache.match('/index.html') || await cache.match('/');
-          if (cachedResponse) return cachedResponse;
-          
-          return new Response('Offline App Shell missing. Please connect to the internet to load the app.', { 
-            status: 503, 
-            statusText: 'Service Unavailable', 
-            headers: { 'Content-Type': 'text/plain' }
-          });
+        }).catch(() => null);
+
+        const finalResponse = cachedResponse || await fetchPromise;
+        if (!finalResponse) {
+          return new Response('Offline and resource not found in cache.', { status: 503, statusText: 'Service Unavailable' });
         }
-      })()
+        return finalResponse;
+      })().catch(e => {
+        console.error("[SW] Fatal dynamic fetch error:", e);
+        return fetch(event.request);
+      })
     );
-    return; 
+  } catch (err) {
+    console.error("[SW] Synchronous fetch handler crash caught:", err);
   }
-
-  // 3. DYNAMIC ASSETS (Stale-While-Revalidate)
-  event.respondWith(
-    (async () => {
-      const cache = await caches.open(DYNAMIC_CACHE);
-      const cachedResponse = await cache.match(event.request);
-
-      const fetchPromise = fetch(event.request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200 && (networkResponse.type === 'basic' || networkResponse.type === 'cors')) {
-           cache.put(event.request, networkResponse.clone());
-        }
-        return networkResponse;
-      }).catch(() => null);
-
-      const finalResponse = cachedResponse || await fetchPromise;
-      if (!finalResponse) {
-        return new Response('Offline and resource not found in cache.', { status: 503, statusText: 'Service Unavailable' });
-      }
-      return finalResponse;
-    })()
-  );
 });
 
 // 4. IDEMPOTENT OFFLINE/ONLINE DATA SYNC SECURITY
