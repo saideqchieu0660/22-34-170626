@@ -1,5 +1,5 @@
-const CACHE_NAME = 'henosis-root-v6';
-const DYNAMIC_CACHE = 'henosis-dynamic-v6';
+const CACHE_NAME = 'henosis-root-v7';
+const DYNAMIC_CACHE = 'henosis-dynamic-v7';
 
 // 1. ASSET CACHING: Baseline assets ONLY. No dynamic Vite hashes here to prevent install aborts.
 const STATIC_ASSETS = [
@@ -151,10 +151,8 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       (async () => {
         let cachedResponse;
-        let cache;
         try {
-          cache = await caches.open(DYNAMIC_CACHE);
-          cachedResponse = await cache.match(event.request);
+          cachedResponse = await caches.match(event.request);
         } catch (e) {
           console.warn("[SW] Dynamic cache match failed:", e);
         }
@@ -162,7 +160,7 @@ self.addEventListener('fetch', (event) => {
         const fetchPromise = fetch(event.request).then(async (networkResponse) => {
           if (networkResponse && networkResponse.status === 200 && (networkResponse.type === 'basic' || networkResponse.type === 'cors')) {
             try {
-               const cacheToPut = cache || await caches.open(DYNAMIC_CACHE);
+               const cacheToPut = await caches.open(DYNAMIC_CACHE);
                await cacheToPut.put(event.request, networkResponse.clone());
             } catch (cachePutErr) {
                console.warn('[SW] Dynamic Cache put failed:', cachePutErr);
